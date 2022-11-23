@@ -71,9 +71,9 @@ def pipe(feat, label, valor, file):
 
 
 ```python
-client = kfp.Client(host='localhost:8080')
+client = kfp.Client(host='http://localhost:8080/pipeline')
 FILE = 'https://raw.githubusercontent.com/ambientelivre/samples_kubeflow/main/datasets/bolsa.csv'
 args = {'feat':'bolsa','label':'usd','file':FILE,'valor':'100'}
-client.create_run_pipeline_funct(pipe,arguments=args)  
-
+##print(client.list_experiments())
+client.create_run_from_pipeline_func(pipe,arguments=args)
 ```
