@@ -21,14 +21,14 @@ def treina(feat:str, label:str,file:str):
 
 
 ```python
-comp_treina = comp.create_component_from_func(treina,output_component_file='treina_component.yaml',base_image='tensorfow/tensorflow:1.11.0-py3')
+comp_treina = comp.create_component_from_func(treina,output_component_file='treina_component.yaml',base_image='tensorflow/tensorflow:1.11.0-py3')
 ```
 
 
 ```python
 def valida (rl: (float,float),feat:str, label:str, file:str) -> float :
     import pandas
-    from sklearn.liner_model import LinearRegression
+    from sklearn.linear_model import LinearRegression
     df = pandas.read_csv(file)
     reglin = LinearRegression()
     reglin.fit(df[[feat]], df[label])
@@ -39,7 +39,7 @@ def valida (rl: (float,float),feat:str, label:str, file:str) -> float :
 
 
 ```python
-comp_valida = comp.create_component_from_func(valida,output_component_file='valida_component.yaml',base_image='tensorfow/tensorflow:1.11.0-py3')
+comp_valida = comp.create_component_from_func(valida,output_component_file='valida_component.yaml',base_image='tensorflow/tensorflow:1.11.0-py3')
 ```
 
 
@@ -57,14 +57,14 @@ def previsao(r2:float, feat:str, label:str, valor:float, file:str) -> float:
 
 
 ```python
-comp_previsao = comp.create_component_from_func(previsao,output_component_file='previsao_component.yaml',base_image='tensorfow/tensorflow:1.11.0-py3')
+comp_previsao = comp.create_component_from_func(previsao,output_component_file='previsao_component.yaml',base_image='tensorflow/tensorflow:1.11.0-py3')
 ```
 
 
 ```python
 @dsl.pipeline(name='Pipeline Data',description='Dados Bolsa X Dolar')
 def pipe(feat, label, valor, file):
-    task_treina   = comp_treinar(feat,label,file)
+    task_treina   = comp_treina(feat,label,file)
     task_valida   = comp_valida(task_treina.output,feat,label,file)
     task_previsao = comp_previsao(task_valida.output,feat,label,valor,file)
 ```
