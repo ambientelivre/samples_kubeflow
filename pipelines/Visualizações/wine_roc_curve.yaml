@@ -1,0 +1,56 @@
+name: Wine classification
+inputs:
+- {name: n_estimators, type: Integer}
+outputs:
+- {name: metrics, type: ClassificationMetrics}
+implementation:
+  container:
+    image: python:3.9
+    command:
+    - sh
+    - -c
+    - |2
+
+      if ! [ -x "$(command -v pip)" ]; then
+          python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip
+      fi
+
+      PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'scikit-learn' 'kfp==1.8.18' 'kfp==1.8.18' && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp -d)
+      printf "%s" "$0" > "$program_path/ephemeral_component.py"
+      python3 -m kfp.v2.components.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+    - |2+
+
+      import kfp
+      from kfp.v2 import dsl
+      from kfp.v2.dsl import *
+      from typing import *
+
+      def wine_classification(n_estimators: int, metrics: Output[ClassificationMetrics]):
+          from sklearn.ensemble import RandomForestClassifier
+          from sklearn.metrics import roc_curve
+          from sklearn.datasets import load_wine
+          from sklearn.model_selection import train_test_split, cross_val_predict
+
+          X, y = load_wine(return_X_y=True)
+          # Binary classification problem for label 1.
+          y = y == 1
+
+          X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+          rfc = RandomForestClassifier(n_estimators=10, random_state=42)
+          rfc.fit(X_train, y_train)
+          y_scores = cross_val_predict(
+              rfc, X_train, y_train, cv=3, method='predict_proba')
+          y_predict = cross_val_predict(rfc, X_train, y_train, cv=3, method='predict')
+          fpr, tpr, thresholds = roc_curve(
+              y_true=y_train, y_score=y_scores[:, 1], pos_label=True)
+          metrics.log_roc_curve(fpr, tpr, thresholds)
+
+    args:
+    - --executor_input
+    - {executorInput: null}
+    - --function_to_execute
+    - wine_classification

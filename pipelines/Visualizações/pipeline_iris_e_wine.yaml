@@ -1,0 +1,267 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: metrics-visualization-pipeline-
+  annotations:
+    pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+    pipelines.kubeflow.org/pipeline_compilation_time: '2023-04-06T13:29:01.274409'
+    pipelines.kubeflow.org/pipeline_spec: '{"inputs": [{"name": "n_estimators", "type":
+      "Integer"}, {"name": "test_samples_fraction", "type": "Float"}, {"default":
+      "", "name": "pipeline-root"}, {"default": "pipeline/metrics-visualization-pipeline",
+      "name": "pipeline-name"}], "name": "metrics-visualization-pipeline"}'
+    pipelines.kubeflow.org/v2_pipeline: "true"
+  labels:
+    pipelines.kubeflow.org/v2_pipeline: "true"
+    pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+spec:
+  entrypoint: metrics-visualization-pipeline
+  templates:
+  - name: iris-sgdclassifier
+    container:
+      args:
+      - sh
+      - -c
+      - |2
+
+        if ! [ -x "$(command -v pip)" ]; then
+            python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip
+        fi
+
+        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'scikit-learn' 'kfp==1.8.18' && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp -d)
+        printf "%s" "$0" > "$program_path/ephemeral_component.py"
+        python3 -m kfp.v2.components.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+      - |2+
+
+        import kfp
+        from kfp.v2 import dsl
+        from kfp.v2.dsl import *
+        from typing import *
+
+        def iris_sgdclassifier(test_samples_fraction: float, metrics: Output[ClassificationMetrics]):
+            from sklearn import datasets, model_selection
+            from sklearn.linear_model import SGDClassifier
+            from sklearn.metrics import confusion_matrix
+
+            iris_dataset = datasets.load_iris()
+            train_x, test_x, train_y, test_y = model_selection.train_test_split(
+                iris_dataset['data'], iris_dataset['target'], test_size=test_samples_fraction)
+
+            classifier = SGDClassifier()
+            classifier.fit(train_x, train_y)
+            predictions = model_selection.cross_val_predict(classifier, train_x, train_y, cv=3)
+            metrics.log_confusion_matrix(
+                ['Setosa', 'Versicolour', 'Virginica'],
+                confusion_matrix(train_y, predictions).tolist() # .tolist() to convert np array to list.
+            )
+
+      - --executor_input
+      - '{{$}}'
+      - --function_to_execute
+      - iris_sgdclassifier
+      command: [/kfp-launcher/launch, --mlmd_server_address, $(METADATA_GRPC_SERVICE_HOST),
+        --mlmd_server_port, $(METADATA_GRPC_SERVICE_PORT), --runtime_info_json, $(KFP_V2_RUNTIME_INFO),
+        --container_image, $(KFP_V2_IMAGE), --task_name, iris-sgdclassifier, --pipeline_name,
+        '{{inputs.parameters.pipeline-name}}', --run_id, $(KFP_RUN_ID), --run_resource,
+        workflows.argoproj.io/$(WORKFLOW_ID), --namespace, $(KFP_NAMESPACE), --pod_name,
+        $(KFP_POD_NAME), --pod_uid, $(KFP_POD_UID), --pipeline_root, '{{inputs.parameters.pipeline-root}}',
+        --enable_caching, $(ENABLE_CACHING), --, 'test_samples_fraction={{inputs.parameters.test_samples_fraction}}',
+        --]
+      env:
+      - name: KFP_POD_NAME
+        valueFrom:
+          fieldRef: {fieldPath: metadata.name}
+      - name: KFP_POD_UID
+        valueFrom:
+          fieldRef: {fieldPath: metadata.uid}
+      - name: KFP_NAMESPACE
+        valueFrom:
+          fieldRef: {fieldPath: metadata.namespace}
+      - name: WORKFLOW_ID
+        valueFrom:
+          fieldRef: {fieldPath: 'metadata.labels[''workflows.argoproj.io/workflow'']'}
+      - name: KFP_RUN_ID
+        valueFrom:
+          fieldRef: {fieldPath: 'metadata.labels[''pipeline/runid'']'}
+      - name: ENABLE_CACHING
+        valueFrom:
+          fieldRef: {fieldPath: 'metadata.labels[''pipelines.kubeflow.org/enable_caching'']'}
+      - {name: KFP_V2_IMAGE, value: 'python:3.9'}
+      - {name: KFP_V2_RUNTIME_INFO, value: '{"inputParameters": {"test_samples_fraction":
+          {"type": "DOUBLE"}}, "inputArtifacts": {}, "outputParameters": {}, "outputArtifacts":
+          {"metrics": {"schemaTitle": "system.ClassificationMetrics", "instanceSchema":
+          "", "schemaVersion": "0.0.1", "metadataPath": "/tmp/outputs/metrics/data"}}}'}
+      envFrom:
+      - configMapRef: {name: metadata-grpc-configmap, optional: true}
+      image: python:3.9
+      volumeMounts:
+      - {mountPath: /kfp-launcher, name: kfp-launcher}
+    inputs:
+      parameters:
+      - {name: pipeline-name}
+      - {name: pipeline-root}
+      - {name: test_samples_fraction}
+    outputs:
+      artifacts:
+      - {name: iris-sgdclassifier-metrics, path: /tmp/outputs/metrics/data}
+    metadata:
+      annotations:
+        pipelines.kubeflow.org/v2_component: "true"
+        pipelines.kubeflow.org/component_ref: '{}'
+        pipelines.kubeflow.org/arguments.parameters: '{"test_samples_fraction": "{{inputs.parameters.test_samples_fraction}}"}'
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/v2_component: "true"
+        pipelines.kubeflow.org/enable_caching: "true"
+    initContainers:
+    - command: [launcher, --copy, /kfp-launcher/launch]
+      image: gcr.io/ml-pipeline/kfp-launcher:1.8.7
+      name: kfp-launcher
+      mirrorVolumeMounts: true
+    volumes:
+    - {name: kfp-launcher}
+  - name: metrics-visualization-pipeline
+    inputs:
+      parameters:
+      - {name: n_estimators}
+      - {name: pipeline-name}
+      - {name: pipeline-root}
+      - {name: test_samples_fraction}
+    dag:
+      tasks:
+      - name: iris-sgdclassifier
+        template: iris-sgdclassifier
+        arguments:
+          parameters:
+          - {name: pipeline-name, value: '{{inputs.parameters.pipeline-name}}'}
+          - {name: pipeline-root, value: '{{inputs.parameters.pipeline-root}}'}
+          - {name: test_samples_fraction, value: '{{inputs.parameters.test_samples_fraction}}'}
+      - name: wine-classification
+        template: wine-classification
+        arguments:
+          parameters:
+          - {name: n_estimators, value: '{{inputs.parameters.n_estimators}}'}
+          - {name: pipeline-name, value: '{{inputs.parameters.pipeline-name}}'}
+          - {name: pipeline-root, value: '{{inputs.parameters.pipeline-root}}'}
+  - name: wine-classification
+    container:
+      args:
+      - sh
+      - -c
+      - |2
+
+        if ! [ -x "$(command -v pip)" ]; then
+            python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip
+        fi
+
+        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'scikit-learn' 'kfp==1.8.18' 'kfp==1.8.18' && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp -d)
+        printf "%s" "$0" > "$program_path/ephemeral_component.py"
+        python3 -m kfp.v2.components.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+      - |2+
+
+        import kfp
+        from kfp.v2 import dsl
+        from kfp.v2.dsl import *
+        from typing import *
+
+        def wine_classification(n_estimators: int, metrics: Output[ClassificationMetrics]):
+            from sklearn.ensemble import RandomForestClassifier
+            from sklearn.metrics import roc_curve
+            from sklearn.datasets import load_wine
+            from sklearn.model_selection import train_test_split, cross_val_predict
+
+            X, y = load_wine(return_X_y=True)
+            # Binary classification problem for label 1.
+            y = y == 1
+
+            X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+            rfc = RandomForestClassifier(n_estimators=10, random_state=42)
+            rfc.fit(X_train, y_train)
+            y_scores = cross_val_predict(
+                rfc, X_train, y_train, cv=3, method='predict_proba')
+            y_predict = cross_val_predict(rfc, X_train, y_train, cv=3, method='predict')
+            fpr, tpr, thresholds = roc_curve(
+                y_true=y_train, y_score=y_scores[:, 1], pos_label=True)
+            metrics.log_roc_curve(fpr, tpr, thresholds)
+
+      - --executor_input
+      - '{{$}}'
+      - --function_to_execute
+      - wine_classification
+      command: [/kfp-launcher/launch, --mlmd_server_address, $(METADATA_GRPC_SERVICE_HOST),
+        --mlmd_server_port, $(METADATA_GRPC_SERVICE_PORT), --runtime_info_json, $(KFP_V2_RUNTIME_INFO),
+        --container_image, $(KFP_V2_IMAGE), --task_name, wine-classification, --pipeline_name,
+        '{{inputs.parameters.pipeline-name}}', --run_id, $(KFP_RUN_ID), --run_resource,
+        workflows.argoproj.io/$(WORKFLOW_ID), --namespace, $(KFP_NAMESPACE), --pod_name,
+        $(KFP_POD_NAME), --pod_uid, $(KFP_POD_UID), --pipeline_root, '{{inputs.parameters.pipeline-root}}',
+        --enable_caching, $(ENABLE_CACHING), --, 'n_estimators={{inputs.parameters.n_estimators}}',
+        --]
+      env:
+      - name: KFP_POD_NAME
+        valueFrom:
+          fieldRef: {fieldPath: metadata.name}
+      - name: KFP_POD_UID
+        valueFrom:
+          fieldRef: {fieldPath: metadata.uid}
+      - name: KFP_NAMESPACE
+        valueFrom:
+          fieldRef: {fieldPath: metadata.namespace}
+      - name: WORKFLOW_ID
+        valueFrom:
+          fieldRef: {fieldPath: 'metadata.labels[''workflows.argoproj.io/workflow'']'}
+      - name: KFP_RUN_ID
+        valueFrom:
+          fieldRef: {fieldPath: 'metadata.labels[''pipeline/runid'']'}
+      - name: ENABLE_CACHING
+        valueFrom:
+          fieldRef: {fieldPath: 'metadata.labels[''pipelines.kubeflow.org/enable_caching'']'}
+      - {name: KFP_V2_IMAGE, value: 'python:3.9'}
+      - {name: KFP_V2_RUNTIME_INFO, value: '{"inputParameters": {"n_estimators": {"type":
+          "INT"}}, "inputArtifacts": {}, "outputParameters": {}, "outputArtifacts":
+          {"metrics": {"schemaTitle": "system.ClassificationMetrics", "instanceSchema":
+          "", "schemaVersion": "0.0.1", "metadataPath": "/tmp/outputs/metrics/data"}}}'}
+      envFrom:
+      - configMapRef: {name: metadata-grpc-configmap, optional: true}
+      image: python:3.9
+      volumeMounts:
+      - {mountPath: /kfp-launcher, name: kfp-launcher}
+    inputs:
+      parameters:
+      - {name: n_estimators}
+      - {name: pipeline-name}
+      - {name: pipeline-root}
+    outputs:
+      artifacts:
+      - {name: wine-classification-metrics, path: /tmp/outputs/metrics/data}
+    metadata:
+      annotations:
+        pipelines.kubeflow.org/v2_component: "true"
+        pipelines.kubeflow.org/component_ref: '{}'
+        pipelines.kubeflow.org/arguments.parameters: '{"n_estimators": "{{inputs.parameters.n_estimators}}"}'
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.18
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/v2_component: "true"
+        pipelines.kubeflow.org/enable_caching: "true"
+    initContainers:
+    - command: [launcher, --copy, /kfp-launcher/launch]
+      image: gcr.io/ml-pipeline/kfp-launcher:1.8.7
+      name: kfp-launcher
+      mirrorVolumeMounts: true
+    volumes:
+    - {name: kfp-launcher}
+  arguments:
+    parameters:
+    - {name: n_estimators}
+    - {name: test_samples_fraction}
+    - {name: pipeline-root, value: ''}
+    - {name: pipeline-name, value: pipeline/metrics-visualization-pipeline}
+  serviceAccountName: pipeline-runner

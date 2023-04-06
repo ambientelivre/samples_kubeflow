@@ -1,0 +1,54 @@
+- Abra o terminal, para instalar o Katib no seu cluster em Kubernetes execute:
+$ kubectl apply -k "github.com/kubeflow/katib.git/manifests/v1beta1/installs/katib-standalone?ref=master"
+
+- Execute o seguinte comando para verificar quais pods do katib estão ativos.
+$ kubectl get pods -n kubeflow | grep katib
+
+- Deve aparecer algo como:
+- ${anexar_imagem_screenshot}
+
+- katib-mysql* por exemplo, é o pod do banco de dados que armazena as métricas dos experimentos executados dentro do Katib
+
+- Faça um proxy reverso para redirecionar a UI do katib da porta 80 do container para a porta 8181 do cluster (no caso, da VM hospedeira). Obs: É recomendado executar esse comando toda vez que se inicia a VM para acessar a UI do katib. 
+$ kubectl port-forward svc/katib-ui -n kubeflow 8181:80
+
+- Por último, acesse a UI do katib na digitando na url do seu navegador: http://localhost:8181/katib/
+
+- Caso você queira desinstalar o Katib do cluster kubernetes
+$ kubectl delete -k "github.com/kubeflow/katib.git/manifests/v1beta1/installs/katib-standalone?ref=master"
+
+
+- Vamos definir um Kubeflow user profile namespace especificamente para gerenciar os experimentos do Katib:
+$ nano profile.yaml                                                                                                 
+
+---- dentro de profile.yaml -------
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ambientelivre.
+  labels:
+    katib.kubeflow.org/metrics-collector-injection: enabled
+
+------------------------------------
+- E adicionar o perfil aos perfis existentes em kubectl
+$ kubectl create -f ./profile.yaml
+
+- Caso você altere metadados do perfil, para aplicar essas mudanças:
+$ kubectl apply -f ./profile.yaml
+
+- Exemplo 1:
+
+- Vamos baixar um .yaml configurado para otimizar a arquitetura e os hiperparâmetros de uma rede neural treinada
+- para classificação de imagens do dataset mnist
+$ curl https://raw.githubusercontent.com/kubeflow/katib/master/examples/v1beta1/hp-tuning/random.yaml --output random.yaml
+
+Editamos na aba "metadata" do random.yaml o campo "namespace: kubeflow"
+para o nome do namespace que criamos, neste caso, ambientelivre.
+
+- Para executar o experimento no namespace do perfil que criamos, basta executar
+$ kubectl apply -f random.yaml
+
+- Para verificar o status do experimento
+$ kubectl -n ambientelivre get experiment random -o yaml
+

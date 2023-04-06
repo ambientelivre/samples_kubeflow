@@ -1,0 +1,53 @@
+name: Iris sgdclassifier
+inputs:
+- {name: test_samples_fraction, type: Float}
+outputs:
+- {name: metrics, type: ClassificationMetrics}
+implementation:
+  container:
+    image: python:3.9
+    command:
+    - sh
+    - -c
+    - |2
+
+      if ! [ -x "$(command -v pip)" ]; then
+          python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip
+      fi
+
+      PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'scikit-learn' 'kfp==1.8.18' && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp -d)
+      printf "%s" "$0" > "$program_path/ephemeral_component.py"
+      python3 -m kfp.v2.components.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+    - |2+
+
+      import kfp
+      from kfp.v2 import dsl
+      from kfp.v2.dsl import *
+      from typing import *
+
+      def iris_sgdclassifier(test_samples_fraction: float, metrics: Output[ClassificationMetrics]):
+          from sklearn import datasets, model_selection
+          from sklearn.linear_model import SGDClassifier
+          from sklearn.metrics import confusion_matrix
+
+          iris_dataset = datasets.load_iris()
+          train_x, test_x, train_y, test_y = model_selection.train_test_split(
+              iris_dataset['data'], iris_dataset['target'], test_size=test_samples_fraction)
+
+          classifier = SGDClassifier()
+          classifier.fit(train_x, train_y)
+          predictions = model_selection.cross_val_predict(classifier, train_x, train_y, cv=3)
+          metrics.log_confusion_matrix(
+              ['Setosa', 'Versicolour', 'Virginica'],
+              confusion_matrix(train_y, predictions).tolist() # .tolist() to convert np array to list.
+          )
+
+    args:
+    - --executor_input
+    - {executorInput: null}
+    - --function_to_execute
+    - iris_sgdclassifier

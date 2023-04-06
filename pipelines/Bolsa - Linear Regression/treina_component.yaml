@@ -1,0 +1,48 @@
+name: Treina
+description: "A fun\xE7\xE3o retorna o caminho at\xE9 o bin\xE1rio do arquivo que\
+  \ cont\xE9m o modelo treinado."
+inputs:
+- {name: feat, type: String}
+- {name: label, type: String}
+- {name: dataset, type: String}
+outputs:
+- {name: output_model, type: String}
+implementation:
+  container:
+    image: tensorflow/tensorflow:1.11.0-py3
+    command:
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n   \
+      \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+      \ndef treina(feat, label, dataset, output_model_path) :\n    \"\"\"\n    A fun\xE7\
+      \xE3o retorna o caminho at\xE9 o bin\xE1rio do arquivo que cont\xE9m o modelo\
+      \ treinado.\n    Isso fica impl\xEDcito quando declaramos OutputPath(str).\n\
+      \    \"\"\"\n\n    import pickle\n    import pandas as pd\n    from sklearn.linear_model\
+      \ import LinearRegression\n\n    # Recebe o dataset e treina o algoritmo\n \
+      \   df = pd.read_csv(dataset)\n    reglin = LinearRegression()\n    reglin.fit(df[[feat]],\
+      \ df[label])\n\n    # Registra o bin\xE1rio do modelo treinado no caminho at\xE9\
+      \ o arquivo \"output_model_path\" no minIO\n    with open(output_model_path,\
+      \ 'wb') as f:\n        pickle.dump(reglin, f)\n\nimport argparse\n_parser =\
+      \ argparse.ArgumentParser(prog='Treina', description='A fun\xE7\xE3o retorna\
+      \ o caminho at\xE9 o bin\xE1rio do arquivo que cont\xE9m o modelo treinado.')\n\
+      _parser.add_argument(\"--feat\", dest=\"feat\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--label\", dest=\"label\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--dataset\", dest=\"dataset\", type=str, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\", dest=\"\
+      output_model_path\", type=_make_parent_dirs_and_return_path, required=True,\
+      \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
+      _outputs = treina(**_parsed_args)\n"
+    args:
+    - --feat
+    - {inputValue: feat}
+    - --label
+    - {inputValue: label}
+    - --dataset
+    - {inputValue: dataset}
+    - --output-model
+    - {outputPath: output_model}
